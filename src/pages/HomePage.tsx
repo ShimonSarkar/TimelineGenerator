@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { timelinesApi, type TimelineSummary } from "../io/api";
+import {
+  comparisonsApi,
+  timelinesApi,
+  type ComparisonSummary,
+  type TimelineSummary,
+} from "../io/api";
 import "../App.css";
 
 type Theme = "light" | "dark";
@@ -30,6 +35,7 @@ function formatDate(iso: string): string {
 export function HomePage() {
   const navigate = useNavigate();
   const [items, setItems] = useState<TimelineSummary[] | null>(null);
+  const [comparisons, setComparisons] = useState<ComparisonSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
@@ -59,13 +65,45 @@ export function HomePage() {
   const refresh = useCallback(async () => {
     try {
       setError(null);
-      const data = await timelinesApi.list();
+      const [data, comps] = await Promise.all([
+        timelinesApi.list(),
+        comparisonsApi.list().catch(() => [] as ComparisonSummary[]),
+      ]);
       setItems(data);
+      setComparisons(comps);
     } catch (err) {
       setError((err as Error).message);
       setItems([]);
+      setComparisons([]);
     }
   }, []);
+
+  async function onRenameComparison(id: string, currentName: string) {
+    const next = window.prompt("Rename comparison", currentName);
+    if (!next || next === currentName) return;
+    setBusy(true);
+    try {
+      await comparisonsApi.rename(id, next);
+      await refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onDeleteComparison(id: string, name: string) {
+    if (!window.confirm(`Delete saved comparison "${name}"?`)) return;
+    setBusy(true);
+    try {
+      await comparisonsApi.remove(id);
+      await refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     refresh();
@@ -196,6 +234,39 @@ export function HomePage() {
 
         {items === null && !error && <div className="home-empty">Loading…</div>}
 
+        {comparisons && comparisons.length > 0 && (
+          <section className="home-section">
+            <h2 className="home-section-title">Saved comparisons</h2>
+            <div className="home-grid">
+              {comparisons.map((c) => (
+                <article key={c.id} className="home-card comparison">
+                  <Link to={`/compare/${c.id}`} className="home-card-body">
+                    <h3 title={c.name}>{c.name || "Untitled comparison"}</h3>
+                    <div className="home-card-meta">
+                      <span>
+                        {c.timelineIds.length} timeline
+                        {c.timelineIds.length === 1 ? "" : "s"}
+                      </span>
+                      <span>Updated {formatDate(c.updatedAt)}</span>
+                    </div>
+                  </Link>
+                  <div className="home-card-actions">
+                    <button onClick={() => onRenameComparison(c.id, c.name)}>
+                      Rename
+                    </button>
+                    <button
+                      className="danger"
+                      onClick={() => onDeleteComparison(c.id, c.name)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
         {filtered && filtered.length === 0 && !error && (
           <div className="home-empty">
             {items && items.length === 0 ? (
@@ -212,48 +283,53 @@ export function HomePage() {
         )}
 
         {filtered && filtered.length > 0 && (
-          <div className="home-grid">
-            {filtered.map((t) => (
-              <article
-                key={t.id}
-                className={selected.has(t.id) ? "home-card selected" : "home-card"}
-              >
-                <label
-                  className="home-card-check"
-                  title="Select for comparison"
-                  onClick={(e) => e.stopPropagation()}
+          <section className="home-section">
+            {comparisons && comparisons.length > 0 && (
+              <h2 className="home-section-title">Timelines</h2>
+            )}
+            <div className="home-grid">
+              {filtered.map((t) => (
+                <article
+                  key={t.id}
+                  className={selected.has(t.id) ? "home-card selected" : "home-card"}
                 >
-                  <input
-                    type="checkbox"
-                    checked={selected.has(t.id)}
-                    onChange={() => toggleSelected(t.id)}
-                  />
-                </label>
-                <Link to={`/t/${t.id}`} className="home-card-body">
-                  <h3 title={t.name}>{t.name || "Untitled"}</h3>
-                  <div className="home-card-meta">
-                    <span>{t.rowCount} row{t.rowCount === 1 ? "" : "s"}</span>
-                    <span>Updated {formatDate(t.updatedAt)}</span>
-                  </div>
-                </Link>
-                <div className="home-card-actions">
-                  <button onClick={() => onRename(t.id, t.name)} title="Rename">
-                    Rename
-                  </button>
-                  <button onClick={() => onDuplicate(t.id)} title="Duplicate">
-                    Duplicate
-                  </button>
-                  <button
-                    className="danger"
-                    onClick={() => onDelete(t.id, t.name)}
-                    title="Delete"
+                  <label
+                    className="home-card-check"
+                    title="Select for comparison"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    Delete
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(t.id)}
+                      onChange={() => toggleSelected(t.id)}
+                    />
+                  </label>
+                  <Link to={`/t/${t.id}`} className="home-card-body">
+                    <h3 title={t.name}>{t.name || "Untitled"}</h3>
+                    <div className="home-card-meta">
+                      <span>{t.rowCount} row{t.rowCount === 1 ? "" : "s"}</span>
+                      <span>Updated {formatDate(t.updatedAt)}</span>
+                    </div>
+                  </Link>
+                  <div className="home-card-actions">
+                    <button onClick={() => onRename(t.id, t.name)} title="Rename">
+                      Rename
+                    </button>
+                    <button onClick={() => onDuplicate(t.id)} title="Duplicate">
+                      Duplicate
+                    </button>
+                    <button
+                      className="danger"
+                      onClick={() => onDelete(t.id, t.name)}
+                      title="Delete"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
         )}
       </main>
     </div>

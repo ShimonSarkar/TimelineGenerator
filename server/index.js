@@ -53,6 +53,18 @@ async function init() {
   await pool.query(
     `CREATE INDEX IF NOT EXISTS timelines_updated_at_idx ON timelines (updated_at DESC);`,
   );
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS comparisons (
+      id          TEXT PRIMARY KEY,
+      name        TEXT NOT NULL DEFAULT 'Untitled comparison',
+      data        JSONB NOT NULL,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS comparisons_updated_at_idx ON comparisons (updated_at DESC);`,
+  );
 }
 
 const app = express();
@@ -227,10 +239,176 @@ app.post("/api/timelines/:id/duplicate", async (req, res) => {
   }
 });
 
-// Delete
+// Delete timeline
 app.delete("/api/timelines/:id", async (req, res) => {
   try {
     const r = await pool.query(`DELETE FROM timelines WHERE id = $1`, [req.params.id]);
+    if (!r.rowCount) return res.status(404).json({ error: "Not found" });
+    res.status(204).end();
+  } catch (err) {
+    res.status(500).json({ error: String(err.message || err) });
+  }
+});
+
+// --------------------------------------------------------------------------
+// Comparisons (saved multi-timeline views)
+// data shape: {
+//   timelineIds: string[],
+//   positions:   Record<string, { x: number, y: number }>,
+//   pxPerDayOverride: number | null,
+//   viewZoom:    number,
+//   hiddenLegends: string[],
+// }
+// --------------------------------------------------------------------------
+
+function normalizeComparisonData(input) {
+  const d = (input && typeof input === "object" ? input : {});
+  return {
+    timelineIds: Array.isArray(d.timelineIds)
+      ? d.timelineIds.filter((x) => typeof x === "string")
+      : [],
+    positions:
+      d.positions && typeof d.positions === "object" && !Array.isArray(d.positions)
+        ? d.positions
+        : {},
+    pxPerDayOverride:
+      typeof d.pxPerDayOverride === "number" ? d.pxPerDayOverride : null,
+    viewZoom: typeof d.viewZoom === "number" ? d.viewZoom : 1,
+    hiddenLegends: Array.isArray(d.hiddenLegends)
+      ? d.hiddenLegends.filter((x) => typeof x === "string")
+      : [],
+  };
+}
+
+// List comparisons
+app.get("/api/comparisons", async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, name, data, created_at, updated_at
+         FROM comparisons
+        ORDER BY updated_at DESC`,
+    );
+    res.json(
+      rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+        timelineIds: Array.isArray(r.data?.timelineIds) ? r.data.timelineIds : [],
+      })),
+    );
+  } catch (err) {
+    res.status(500).json({ error: String(err.message || err) });
+  }
+});
+
+// Get one comparison
+app.get("/api/comparisons/:id", async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, name, data, created_at, updated_at FROM comparisons WHERE id = $1`,
+      [req.params.id],
+    );
+    if (!rows.length) return res.status(404).json({ error: "Not found" });
+    const r = rows[0];
+    res.json({
+      id: r.id,
+      name: r.name,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      data: normalizeComparisonData(r.data),
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err.message || err) });
+  }
+});
+
+// Create comparison
+app.post("/api/comparisons", async (req, res) => {
+  try {
+    const body = req.body || {};
+    const id = body.id || randomUUID();
+    const name = body.name || "Untitled comparison";
+    const data = normalizeComparisonData(body.data);
+    if (data.timelineIds.length < 2) {
+      return res.status(400).json({ error: "A comparison needs at least 2 timeline ids" });
+    }
+    const { rows } = await pool.query(
+      `INSERT INTO comparisons (id, name, data) VALUES ($1, $2, $3)
+       RETURNING id, name, created_at, updated_at`,
+      [id, name, data],
+    );
+    const r = rows[0];
+    res.status(201).json({
+      id: r.id,
+      name: r.name,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      data,
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err.message || err) });
+  }
+});
+
+// Update (upsert) comparison
+app.put("/api/comparisons/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const body = req.body || {};
+    const data = normalizeComparisonData(body.data);
+    const name = body.name || "Untitled comparison";
+    const { rows } = await pool.query(
+      `INSERT INTO comparisons (id, name, data, updated_at)
+         VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (id) DO UPDATE
+         SET name = EXCLUDED.name,
+             data = EXCLUDED.data,
+             updated_at = NOW()
+       RETURNING id, name, created_at, updated_at`,
+      [id, name, data],
+    );
+    const r = rows[0];
+    res.json({
+      id: r.id,
+      name: r.name,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      data,
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err.message || err) });
+  }
+});
+
+// Rename comparison
+app.patch("/api/comparisons/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const name = req.body?.name;
+    if (!name) return res.status(400).json({ error: "Missing name" });
+    const { rows } = await pool.query(
+      `UPDATE comparisons SET name = $2, updated_at = NOW() WHERE id = $1
+       RETURNING id, name, created_at, updated_at`,
+      [id, name],
+    );
+    if (!rows.length) return res.status(404).json({ error: "Not found" });
+    const r = rows[0];
+    res.json({
+      id: r.id,
+      name: r.name,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err.message || err) });
+  }
+});
+
+// Delete comparison
+app.delete("/api/comparisons/:id", async (req, res) => {
+  try {
+    const r = await pool.query(`DELETE FROM comparisons WHERE id = $1`, [req.params.id]);
     if (!r.rowCount) return res.status(404).json({ error: "Not found" });
     res.status(204).end();
   } catch (err) {
@@ -248,3 +426,4 @@ init()
     console.error("[server] Failed to initialize DB:", err);
     process.exit(1);
   });
+

@@ -6,10 +6,15 @@ import {
   useRef,
   useState,
 } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { TimelineCanvas } from "../components/TimelineCanvas";
 import { TimelineSchema, type Timeline } from "../model/timeline";
-import { timelinesApi, type TimelineRecord } from "../io/api";
+import {
+  comparisonsApi,
+  timelinesApi,
+  type ComparisonRecord,
+  type TimelineRecord,
+} from "../io/api";
 import { timelineSpan } from "../render/scale";
 import "../App.css";
 
@@ -50,14 +55,49 @@ const DEFAULT_PANEL_HEIGHT_GUESS = 520;
 
 export function ComparePage() {
   const [params] = useSearchParams();
+  const { id: savedId } = useParams<{ id?: string }>();
+  const navigate = useNavigate();
+  const [savedRecord, setSavedRecord] = useState<ComparisonRecord | null>(null);
+  const [savedName, setSavedName] = useState<string>("");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // When loading a saved comparison, fetch it first so we know which timelines to load.
+  useEffect(() => {
+    if (!savedId) {
+      setSavedRecord(null);
+      setSavedName("");
+      return;
+    }
+    let cancelled = false;
+    comparisonsApi
+      .get(savedId)
+      .then((rec) => {
+        if (cancelled) return;
+        setSavedRecord(rec);
+        setSavedName(rec.name);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setSaveError((err as Error).message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [savedId]);
+
   const ids = useMemo(() => {
+    if (savedRecord) return savedRecord.data.timelineIds;
     const raw = params.get("ids") ?? "";
     return raw
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-  }, [params]);
-  const positionsKey = useMemo(() => `tlg-compare-positions:${ids.join(",")}`, [ids]);
+  }, [savedRecord, params]);
+  const positionsKey = useMemo(
+    () => (savedId ? `tlg-compare-positions:saved:${savedId}` : `tlg-compare-positions:${ids.join(",")}`),
+    [savedId, ids],
+  );
 
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [sources, setSources] = useState<TimelineRecord[] | null>(null);
@@ -114,6 +154,7 @@ export function ComparePage() {
 
   // Fetch.
   useEffect(() => {
+    if (savedId && !savedRecord) return; // wait for saved record first
     if (ids.length === 0) {
       setError("No timelines selected. Add ?ids=a,b,c to the URL.");
       return;
@@ -340,6 +381,98 @@ export function ComparePage() {
     stageRef.current?.scrollTo({ top: 0, left: 0 });
   }
 
+  // Hydrate from a freshly loaded saved comparison.
+  const hydratedForId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!savedRecord) return;
+    if (hydratedForId.current === savedRecord.id) return;
+    hydratedForId.current = savedRecord.id;
+    const d = savedRecord.data;
+    setPositions(d.positions || {});
+    setPxPerDayOverride(typeof d.pxPerDayOverride === "number" ? d.pxPerDayOverride : null);
+    setViewZoom(typeof d.viewZoom === "number" ? d.viewZoom : 1);
+    setHiddenLegends(new Set(d.hiddenLegends || []));
+  }, [savedRecord]);
+
+  // Auto-save (debounced) when on a saved comparison and state changes.
+  const saveTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!savedId) return;
+    if (hydratedForId.current !== savedId) return; // wait until initial hydration
+    if (ids.length < 2) return;
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    setSaveState("saving");
+    saveTimerRef.current = window.setTimeout(() => {
+      comparisonsApi
+        .update(savedId, savedName || "Untitled comparison", {
+          timelineIds: ids,
+          positions,
+          pxPerDayOverride,
+          viewZoom,
+          hiddenLegends: Array.from(hiddenLegends),
+        })
+        .then(() => setSaveState("saved"))
+        .catch((err) => {
+          setSaveError((err as Error).message);
+          setSaveState("error");
+        });
+    }, 700);
+    return () => {
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    };
+  }, [savedId, savedName, ids, positions, pxPerDayOverride, viewZoom, hiddenLegends]);
+
+  async function saveAsNew() {
+    if (ids.length < 2) return;
+    const name = window.prompt(
+      "Name this comparison",
+      `Comparison of ${ids.length} timelines`,
+    );
+    if (!name) return;
+    setSaveState("saving");
+    setSaveError(null);
+    try {
+      const rec = await comparisonsApi.create(name, {
+        timelineIds: ids,
+        positions,
+        pxPerDayOverride,
+        viewZoom,
+        hiddenLegends: Array.from(hiddenLegends),
+      });
+      setSaveState("saved");
+      navigate(`/compare/${rec.id}`);
+    } catch (err) {
+      setSaveError((err as Error).message);
+      setSaveState("error");
+    }
+  }
+
+  async function renameSaved() {
+    if (!savedId) return;
+    const next = window.prompt("Rename comparison", savedName);
+    if (!next || next === savedName) return;
+    setSaveState("saving");
+    try {
+      await comparisonsApi.rename(savedId, next);
+      setSavedName(next);
+      setSaveState("saved");
+    } catch (err) {
+      setSaveError((err as Error).message);
+      setSaveState("error");
+    }
+  }
+
+  const saveLabel =
+    saveState === "saving"
+      ? "Saving…"
+      : saveState === "saved"
+      ? "Saved"
+      : saveState === "error"
+      ? "Save failed"
+      : savedId
+      ? "Saved"
+      : "Save comparison";
+
   return (
     <div className="app">
       <div className="app-bar">
@@ -347,7 +480,13 @@ export function ComparePage() {
           ← All timelines
         </Link>
         <div className="app-bar-actions">
-          <span className="compare-badge">Comparison view · read-only</span>
+          {savedId ? (
+            <span className="compare-badge" title="Saved comparison">
+              ⤓ {savedName || "Untitled comparison"}
+            </span>
+          ) : (
+            <span className="compare-badge">Comparison view · read-only</span>
+          )}
           <label className="zoom">
             Zoom
             <input
@@ -408,6 +547,31 @@ export function ComparePage() {
             title="Toggle theme"
           >
             {theme === "light" ? "☾ Dark" : "☼ Light"}
+          </button>
+          {savedId && (
+            <button
+              className="bar-btn"
+              onClick={renameSaved}
+              title="Rename this comparison"
+            >
+              Rename
+            </button>
+          )}
+          <button
+            className="primary"
+            onClick={savedId ? undefined : saveAsNew}
+            disabled={ids.length < 2 || (!!savedId && saveState !== "error")}
+            title={
+              savedId
+                ? saveState === "error"
+                  ? saveError ?? "Retry save"
+                  : "Auto-saving"
+                : ids.length < 2
+                ? "Need at least 2 timelines"
+                : "Save this comparison so it shows up on the home page"
+            }
+          >
+            {saveLabel}
           </button>
         </div>
       </div>

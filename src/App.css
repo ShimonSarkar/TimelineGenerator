@@ -356,6 +356,30 @@ button {
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 16px;
 }
+.home-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.home-section + .home-section {
+  margin-top: 28px;
+}
+.home-section-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.home-card.comparison {
+  border-color: color-mix(in oklab, var(--accent) 35%, var(--glass-border));
+}
+.home-card.comparison h3::before {
+  content: "⇄ ";
+  color: var(--accent);
+  margin-right: 2px;
+}
 .home-card {
   display: flex;
   flex-direction: column;

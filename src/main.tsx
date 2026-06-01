@@ -13,6 +13,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/" element={<HomePage />} />
         <Route path="/t/:id" element={<App />} />
         <Route path="/compare" element={<ComparePage />} />
+        <Route path="/compare/:id" element={<ComparePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

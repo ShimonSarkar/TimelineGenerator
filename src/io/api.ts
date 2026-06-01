@@ -63,3 +63,53 @@ export const timelinesApi = {
   remove: (id: string) =>
     jsonFetch<void>(`/api/timelines/${id}`, { method: "DELETE" }),
 };
+
+// --------------------------------------------------------------------------
+// Comparisons
+// --------------------------------------------------------------------------
+
+export interface ComparisonViewState {
+  timelineIds: string[];
+  positions: Record<string, { x: number; y: number }>;
+  pxPerDayOverride: number | null;
+  viewZoom: number;
+  hiddenLegends: string[];
+}
+
+export interface ComparisonSummary {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  timelineIds: string[];
+}
+
+export interface ComparisonRecord {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  data: ComparisonViewState;
+}
+
+export const comparisonsApi = {
+  list: () => jsonFetch<ComparisonSummary[]>("/api/comparisons"),
+  get: (id: string) => jsonFetch<ComparisonRecord>(`/api/comparisons/${id}`),
+  create: (name: string, data: ComparisonViewState) =>
+    jsonFetch<ComparisonRecord>("/api/comparisons", {
+      method: "POST",
+      body: JSON.stringify({ name, data }),
+    }),
+  update: (id: string, name: string, data: ComparisonViewState) =>
+    jsonFetch<ComparisonRecord>(`/api/comparisons/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ name, data }),
+    }),
+  rename: (id: string, name: string) =>
+    jsonFetch<ComparisonSummary>(`/api/comparisons/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    }),
+  remove: (id: string) =>
+    jsonFetch<void>(`/api/comparisons/${id}`, { method: "DELETE" }),
+};
