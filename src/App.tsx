@@ -99,7 +99,7 @@ function App() {
           setSyncError((err as Error).message);
           setSync("error");
         });
-    }, 600);
+    }, 5000);
     return () => {
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     };

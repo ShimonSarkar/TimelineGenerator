@@ -433,7 +433,7 @@ export function ComparePage() {
           setSaveError((err as Error).message);
           setSaveState("error");
         });
-    }, 700);
+    }, 5000);
     return () => {
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     };
