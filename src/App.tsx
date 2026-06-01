@@ -90,8 +90,8 @@ function App() {
     if (loadedIdRef.current !== routeId) return; // wait for initial load
     if (sync === "loading" || sync === "error") return;
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
-    setSync("saving");
     saveTimerRef.current = window.setTimeout(() => {
+      setSync("saving");
       timelinesApi
         .update(routeId, timeline)
         .then(() => setSync("saved"))

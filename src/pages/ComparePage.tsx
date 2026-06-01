@@ -418,8 +418,8 @@ export function ComparePage() {
     if (hydratedForId.current !== savedId) return; // wait until initial hydration
     if (ids.length < 2) return;
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
-    setSaveState("saving");
     saveTimerRef.current = window.setTimeout(() => {
+      setSaveState("saving");
       comparisonsApi
         .update(savedId, savedName || "Untitled comparison", {
           timelineIds: ids,
