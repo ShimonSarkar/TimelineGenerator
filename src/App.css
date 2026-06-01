@@ -242,16 +242,30 @@ button {
   top: 0;
   z-index: 5;
 }
+.home-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .home-brand h1 {
   margin: 0;
   font-size: 22px;
   font-weight: 700;
   letter-spacing: -0.2px;
 }
-.home-brand p {
-  margin: 2px 0 0;
-  font-size: 13px;
-  color: var(--muted);
+.home-logo {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  color: color-mix(in oklab, var(--muted) 80%, transparent);
+  fill: color-mix(in oklab, var(--muted) 70%, transparent);
+  display: block;
+}
+.home-logo .home-logo-bar {
+  fill: var(--accent);
+}
+.home-logo .home-logo-dot {
+  fill: var(--bg);
 }
 .home-actions {
   display: flex;

@@ -107,51 +107,67 @@ export function TimelineCanvas({ exportRef, timeline: timelineProp, domain, read
     const bottomLanes = bottomBracketEffectiveLane.size
       ? Math.max(...bottomBracketEffectiveLane.values()) + 1
       : 0;
-    const topBracketsH =
-      topLanes * LAYOUT.bracketLaneHeight +
-      Math.max(0, ...topBrackets.map((b) => b.labelOffsetY ?? 0), 0);
-    const bottomBracketsH =
-      bottomLanes * LAYOUT.bracketLaneHeight +
-      Math.max(0, ...bottomBrackets.map((b) => b.labelOffsetY ?? 0), 0);
+    // Per-bracket reservation: each bracket needs (effLane + 1) * laneHeight + its own
+    // labelOffsetY pixels above the topBracketsBaseline. The header section grows to fit
+    // the most-demanding bracket, and shrinks when all brackets are pulled toward the
+    // chart via negative offsets. Floored at 0.
+    const topBracketsH = Math.max(
+      0,
+      ...topBrackets.map(
+        (b) =>
+          ((topBracketEffectiveLane.get(b.id) ?? 0) + 1) * LAYOUT.bracketLaneHeight +
+          (b.labelOffsetY ?? 0),
+      ),
+    );
+    const bottomBracketsH = Math.max(
+      0,
+      ...bottomBrackets.map(
+        (b) =>
+          ((bottomBracketEffectiveLane.get(b.id) ?? 0) + 1) * LAYOUT.bracketLaneHeight +
+          (b.labelOffsetY ?? 0),
+      ),
+    );
 
     // Guide label lanes (independent of brackets)
     const guideLayout = layoutGuideLabels(timeline.guides, timeline, LAYOUT.leftGutter, minDay);
+    const topGuides = timeline.guides.filter((g) => g.labelPosition === "top");
+    const bottomGuides = timeline.guides.filter((g) => g.labelPosition === "bottom");
     const topGuideMaxLines = Math.max(
       0,
-      ...timeline.guides
-        .filter((g) => g.labelPosition === "top")
-        .map((g) => g.label.split("\n").length),
+      ...topGuides.map((g) => g.label.split("\n").length),
     );
     const bottomGuideMaxLines = Math.max(
       0,
-      ...timeline.guides
-        .filter((g) => g.labelPosition === "bottom")
-        .map((g) => g.label.split("\n").length),
+      ...bottomGuides.map((g) => g.label.split("\n").length),
     );
     const topGuideLaneBlock = topGuideMaxLines * GUIDE_LINE_H + GUIDE_LANE_GAP;
     const bottomGuideLaneBlock = bottomGuideMaxLines * GUIDE_LINE_H + GUIDE_LANE_GAP;
+
+    // Per-guide reservation, same logic as brackets.
+    const topGuideLaneById = new Map(guideLayout.top.map((e) => [e.guide.id, e.lane]));
+    const bottomGuideLaneById = new Map(guideLayout.bottom.map((e) => [e.guide.id, e.lane]));
     const topGuideH =
       guideLayout.topLanes > 0
-        ? guideLayout.topLanes * topGuideLaneBlock +
-          GUIDE_AREA_PAD +
-          Math.max(
+        ? Math.max(
             0,
-            ...timeline.guides
-              .filter((g) => g.labelPosition === "top")
-              .map((g) => g.labelOffsetY ?? 0),
-            0,
+            ...topGuides.map(
+              (g) =>
+                ((topGuideLaneById.get(g.id) ?? 0) + 1) * topGuideLaneBlock +
+                GUIDE_AREA_PAD +
+                (g.labelOffsetY ?? 0),
+            ),
           )
         : 0;
     const bottomGuideH =
       guideLayout.bottomLanes > 0
-        ? guideLayout.bottomLanes * bottomGuideLaneBlock +
-          GUIDE_AREA_PAD +
-          Math.max(
+        ? Math.max(
             0,
-            ...timeline.guides
-              .filter((g) => g.labelPosition === "bottom")
-              .map((g) => g.labelOffsetY ?? 0),
-            0,
+            ...bottomGuides.map(
+              (g) =>
+                ((bottomGuideLaneById.get(g.id) ?? 0) + 1) * bottomGuideLaneBlock +
+                GUIDE_AREA_PAD +
+                (g.labelOffsetY ?? 0),
+            ),
           )
         : 0;
 

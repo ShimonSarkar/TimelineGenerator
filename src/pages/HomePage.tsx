@@ -129,8 +129,26 @@ export function HomePage() {
     <div className="app home">
       <header className="home-header">
         <div className="home-brand">
-          <h1>Timeline Generator</h1>
-          <p>Your saved timelines</p>
+          <svg
+            className="home-logo"
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            {/* rounded card frame */}
+            <rect
+              x="3" y="3" width="18" height="18" rx="3.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              className="home-logo-frame"
+            />
+            {/* stacked timeline bars of varying widths */}
+            <rect x="6"  y="7.5"  width="9"  height="1.8" rx="0.9" />
+            <rect x="6"  y="11.1" width="12" height="1.8" rx="0.9" className="home-logo-bar" />
+            <rect x="6"  y="14.7" width="7"  height="1.8" rx="0.9" />
+          </svg>
+          <h1>Timegrid</h1>
         </div>
         <div className="home-actions">
           <input
