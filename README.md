@@ -16,6 +16,7 @@ It's built for engineers, PMs, and security responders who repeatedly produce th
 - **Undo/redo** on every change (via `zundo`).
 - **Persistent storage.** Timelines are saved to Postgres through a small Express API; the home page lists every saved timeline with create / open / rename / duplicate / delete.
 - **Compare view.** Open multiple timelines side-by-side at `/compare?ids=...` to diff release plans or proposed schedules.
+- **Saved comparisons.** Name a compare view (panel layout, zoom, pixels-per-day, legend visibility) and it shows up on the home page alongside your timelines; auto-saves on every change, just like the editor.
 - **Export.** SVG, PNG, and PDF export of the rendered timeline.
 - **Light/dark themes** with a toggle.
 
@@ -70,11 +71,14 @@ The Vite dev server proxies `/api/*` to the backend on port 4000.
 
 ## Routes
 
-- `/` — Home page listing every saved timeline (create / open / rename / duplicate / delete).
+- `/` — Home page listing every saved timeline and every saved comparison (create / open / rename / duplicate / delete).
 - `/t/:id` — Editor for a single timeline. Changes auto-save (debounced) back to Postgres.
-- `/compare?ids=a,b,c` — Side-by-side comparison view for multiple timelines.
+- `/compare?ids=a,b,c` — Ad-hoc side-by-side comparison view for multiple timelines.
+- `/compare/:id` — A saved comparison view; layout, zoom, and legend toggles auto-save back to Postgres.
 
 ## API
+
+Timelines:
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -85,6 +89,17 @@ The Vite dev server proxies `/api/*` to the backend on port 4000.
 | `PATCH` | `/api/timelines/:id` | Rename only |
 | `POST` | `/api/timelines/:id/duplicate` | Duplicate |
 | `DELETE` | `/api/timelines/:id` | Delete |
+
+Comparisons (saved multi-timeline views):
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/comparisons` | List summaries |
+| `POST` | `/api/comparisons` | Create with `{ name, data: { timelineIds, positions, pxPerDayOverride, viewZoom, hiddenLegends } }` |
+| `GET` | `/api/comparisons/:id` | Fetch full comparison + view state |
+| `PUT` | `/api/comparisons/:id` | Upsert view state |
+| `PATCH` | `/api/comparisons/:id` | Rename only |
+| `DELETE` | `/api/comparisons/:id` | Delete |
 
 ## Scripts
 
