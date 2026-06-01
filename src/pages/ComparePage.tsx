@@ -396,6 +396,23 @@ export function ComparePage() {
 
   // Auto-save (debounced) when on a saved comparison and state changes.
   const saveTimerRef = useRef<number | null>(null);
+  const currentStateRef = useRef({
+    name: savedName,
+    ids,
+    positions,
+    pxPerDayOverride,
+    viewZoom,
+    hiddenLegends,
+  });
+  currentStateRef.current = {
+    name: savedName,
+    ids,
+    positions,
+    pxPerDayOverride,
+    viewZoom,
+    hiddenLegends,
+  };
+
   useEffect(() => {
     if (!savedId) return;
     if (hydratedForId.current !== savedId) return; // wait until initial hydration
@@ -421,6 +438,45 @@ export function ComparePage() {
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     };
   }, [savedId, savedName, ids, positions, pxPerDayOverride, viewZoom, hiddenLegends]);
+
+  // Manual save: flush the debounce and PUT now (mirrors editor's Ctrl+S behavior).
+  const saveNow = useCallback(async () => {
+    if (!savedId) return;
+    if (hydratedForId.current !== savedId) return;
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    const s = currentStateRef.current;
+    setSaveState("saving");
+    setSaveError(null);
+    try {
+      await comparisonsApi.update(savedId, s.name || "Untitled comparison", {
+        timelineIds: s.ids,
+        positions: s.positions,
+        pxPerDayOverride: s.pxPerDayOverride,
+        viewZoom: s.viewZoom,
+        hiddenLegends: Array.from(s.hiddenLegends),
+      });
+      setSaveState("saved");
+    } catch (err) {
+      setSaveError((err as Error).message);
+      setSaveState("error");
+    }
+  }, [savedId]);
+
+  // Ctrl/Cmd+S to save (only meaningful on a saved comparison).
+  useEffect(() => {
+    if (!savedId) return;
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        saveNow();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [savedId, saveNow]);
 
   async function saveAsNew() {
     if (ids.length < 2) return;
@@ -461,17 +517,6 @@ export function ComparePage() {
       setSaveState("error");
     }
   }
-
-  const saveLabel =
-    saveState === "saving"
-      ? "Saving…"
-      : saveState === "saved"
-      ? "Saved"
-      : saveState === "error"
-      ? "Save failed"
-      : savedId
-      ? "Saved"
-      : "Save comparison";
 
   return (
     <div className="app">
@@ -558,21 +603,34 @@ export function ComparePage() {
             </button>
           )}
           <button
-            className="primary"
-            onClick={savedId ? undefined : saveAsNew}
-            disabled={ids.length < 2 || (!!savedId && saveState !== "error")}
+            className="bar-btn primary"
+            onClick={savedId ? saveNow : saveAsNew}
+            disabled={
+              ids.length < 2 ||
+              saveState === "saving" ||
+              (!savedId && saveState === "saved")
+            }
             title={
               savedId
-                ? saveState === "error"
-                  ? saveError ?? "Retry save"
-                  : "Auto-saving"
+                ? "Save (Ctrl+S)"
                 : ids.length < 2
                 ? "Need at least 2 timelines"
                 : "Save this comparison so it shows up on the home page"
             }
           >
-            {saveLabel}
+            {saveState === "saving" ? "Saving…" : "Save"}
           </button>
+          {savedId && (
+            <span className={`sync-badge sync-${saveState}`}>
+              {saveState === "saving"
+                ? "Saving…"
+                : saveState === "saved"
+                ? "Saved"
+                : saveState === "error"
+                ? `Error: ${saveError ?? "save failed"}`
+                : "Synced"}
+            </span>
+          )}
         </div>
       </div>
       <div className="compare-sources">
