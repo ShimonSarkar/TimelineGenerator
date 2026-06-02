@@ -72,7 +72,7 @@ export function BracketLabel({ bracket, timeline, baselineY, side, offsetX, minD
         strokeLinejoin="round"
       />
       <text
-        x={(xLeft + xRight) / 2}
+        x={(xLeft + xRight) / 2 + (bracket.labelOffsetX ?? 0)}
         y={labelY}
         textAnchor="middle"
         fontSize={12}

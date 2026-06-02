@@ -106,7 +106,7 @@ export function GuideLine({
         strokeWidth={10}
       />
       <text
-        x={x}
+        x={x + (guide.labelOffsetX ?? 0)}
         y={labelTopY + LINE_H - 3}
         textAnchor="middle"
         fontSize={FONT}
@@ -115,7 +115,7 @@ export function GuideLine({
         style={{ userSelect: "none" }}
       >
         {labelLines.map((ln, i) => (
-          <tspan key={i} x={x} dy={i === 0 ? 0 : LINE_H}>
+          <tspan key={i} x={x + (guide.labelOffsetX ?? 0)} dy={i === 0 ? 0 : LINE_H}>
             {ln}
           </tspan>
         ))}

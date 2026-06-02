@@ -86,6 +86,8 @@ export const BracketSchema = z.object({
   lane: z.number().int().min(0).default(0),
   /** Vertical offset (in px) applied to the bracket's label. Positive = away from chart. */
   labelOffsetY: z.number().default(0),
+  /** Horizontal offset (in px) applied to the bracket's label only. Positive = right. */
+  labelOffsetX: z.number().default(0),
   anchor: BracketAnchorSchema,
 });
 export type Bracket = z.infer<typeof BracketSchema>;
@@ -101,6 +103,8 @@ export const GuideSchema = z.object({
   labelPosition: z.enum(["top", "bottom"]).default("top"),
   /** Vertical offset (in px) applied to the guide's label. Positive = away from chart. */
   labelOffsetY: z.number().default(0),
+  /** Horizontal offset (in px) applied to the guide's label only. Positive = right. */
+  labelOffsetX: z.number().default(0),
 });
 export type Guide = z.infer<typeof GuideSchema>;
 

@@ -447,6 +447,13 @@ function BracketPanel({ id }: { id: string }) {
           onChange={(e) => updateBracket(id, { labelOffsetY: Number(e.target.value) })}
         />
       </Field>
+      <Field label="Label offset X (px)">
+        <input
+          type="number"
+          value={bracket.labelOffsetX ?? 0}
+          onChange={(e) => updateBracket(id, { labelOffsetX: Number(e.target.value) })}
+        />
+      </Field>
       <Field label="Anchor type">
         <select
           value={bracket.anchor.kind}
@@ -556,6 +563,13 @@ function GuidePanel({ id }: { id: string }) {
           type="number"
           value={guide.labelOffsetY ?? 0}
           onChange={(e) => updateGuide(id, { labelOffsetY: Number(e.target.value) })}
+        />
+      </Field>
+      <Field label="Label offset X (px)">
+        <input
+          type="number"
+          value={guide.labelOffsetX ?? 0}
+          onChange={(e) => updateGuide(id, { labelOffsetX: Number(e.target.value) })}
         />
       </Field>
     </div>
