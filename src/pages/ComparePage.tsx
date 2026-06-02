@@ -14,6 +14,7 @@ import {
   timelinesApi,
   type ComparisonRecord,
   type TimelineRecord,
+  type TimelineSummary,
 } from "../io/api";
 import { timelineSpan } from "../render/scale";
 import "../App.css";
@@ -86,18 +87,62 @@ export function ComparePage() {
     };
   }, [savedId]);
 
-  const ids = useMemo(() => {
-    if (savedRecord) return savedRecord.data.timelineIds;
+  // Selected timeline ids — mutable so the user can add/remove timelines on the fly.
+  // Seeded from saved record (when loading one) or the URL (?ids=...).
+  const [ids, setIds] = useState<string[]>(() => {
     const raw = params.get("ids") ?? "";
     return raw
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-  }, [savedRecord, params]);
+  });
+  const seededFromSavedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!savedRecord) return;
+    if (seededFromSavedRef.current === savedRecord.id) return;
+    seededFromSavedRef.current = savedRecord.id;
+    setIds(savedRecord.data.timelineIds || []);
+  }, [savedRecord]);
   const positionsKey = useMemo(
     () => (savedId ? `tlg-compare-positions:saved:${savedId}` : `tlg-compare-positions:${ids.join(",")}`),
     [savedId, ids],
   );
+
+  // All timelines available to pick from the dropdown.
+  const [availableTimelines, setAvailableTimelines] = useState<TimelineSummary[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    timelinesApi.list().then((rows) => {
+      if (!cancelled) setAvailableTimelines(rows);
+    }).catch(() => { /* dropdown just stays empty */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  function addTimelineId(id: string) {
+    if (!id) return;
+    setIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  }
+  function removeTimelineId(id: string) {
+    setIds((prev) => prev.filter((x) => x !== id));
+    setPositions((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setSizes((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setHiddenLegends((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }
 
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [sources, setSources] = useState<TimelineRecord[] | null>(null);
@@ -152,29 +197,39 @@ export function ComparePage() {
     window.localStorage.setItem(positionsKey, JSON.stringify(positions));
   }, [positions, positionsKey]);
 
-  // Fetch.
+  // Fetch. Uses allSettled so a missing/deleted timeline doesn't break the whole view —
+  // it's silently dropped from `ids` and (if this is a saved comparison) auto-saved out.
   useEffect(() => {
     if (savedId && !savedRecord) return; // wait for saved record first
     if (ids.length === 0) {
-      setError("No timelines selected. Add ?ids=a,b,c to the URL.");
+      setError(null);
+      setSources([]);
       return;
     }
     let cancelled = false;
     setError(null);
     setSources(null);
-    Promise.all(ids.map((id) => timelinesApi.get(id)))
-      .then((recs) => {
+    Promise.allSettled(ids.map((id) => timelinesApi.get(id)))
+      .then((results) => {
         if (cancelled) return;
+        const recs: TimelineRecord[] = [];
+        const missing: string[] = [];
+        results.forEach((r, i) => {
+          if (r.status === "fulfilled") recs.push(r.value);
+          else missing.push(ids[i]);
+        });
         setSources(recs);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError((err as Error).message);
+        if (missing.length > 0) {
+          // Drop deleted ids from selection; autosave (if on a saved comparison)
+          // will then persist the cleanup.
+          setIds((prev) => prev.filter((x) => !missing.includes(x)));
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [ids]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ids, savedRecord]);
 
   const parsed = useMemo<Timeline[] | null>(() => {
     if (!sources) return null;
@@ -416,7 +471,6 @@ export function ComparePage() {
   useEffect(() => {
     if (!savedId) return;
     if (hydratedForId.current !== savedId) return; // wait until initial hydration
-    if (ids.length < 2) return;
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     saveTimerRef.current = window.setTimeout(() => {
       setSaveState("saving");
@@ -479,10 +533,10 @@ export function ComparePage() {
   }, [savedId, saveNow]);
 
   async function saveAsNew() {
-    if (ids.length < 2) return;
+    if (ids.length < 1) return;
     const name = window.prompt(
       "Name this comparison",
-      `Comparison of ${ids.length} timelines`,
+      `Comparison of ${ids.length} timeline${ids.length === 1 ? "" : "s"}`,
     );
     if (!name) return;
     setSaveState("saving");
@@ -606,15 +660,15 @@ export function ComparePage() {
             className="bar-btn primary"
             onClick={savedId ? saveNow : saveAsNew}
             disabled={
-              ids.length < 2 ||
+              ids.length < 1 ||
               saveState === "saving" ||
               (!savedId && saveState === "saved")
             }
             title={
               savedId
                 ? "Save (Ctrl+S)"
-                : ids.length < 2
-                ? "Need at least 2 timelines"
+                : ids.length < 1
+                ? "Add at least one timeline"
                 : "Save this comparison so it shows up on the home page"
             }
           >
@@ -639,8 +693,36 @@ export function ComparePage() {
           <span key={rec.id} className="compare-source-chip">
             <span className="compare-source-dot" data-i={i % 6} />
             <Link to={`/t/${rec.id}`}>{rec.timeline.name || "Untitled"}</Link>
+            <button
+              type="button"
+              className="compare-source-remove"
+              onClick={() => removeTimelineId(rec.id)}
+              title="Remove from comparison"
+              aria-label={`Remove ${rec.timeline.name || "Untitled"} from comparison`}
+            >
+              ×
+            </button>
           </span>
         ))}
+        <select
+          className="compare-source-add"
+          value=""
+          onChange={(e) => {
+            const id = e.target.value;
+            if (id) addTimelineId(id);
+            e.currentTarget.value = "";
+          }}
+          title="Add a timeline to this comparison"
+        >
+          <option value="">+ Add timeline…</option>
+          {availableTimelines
+            .filter((t) => !ids.includes(t.id))
+            .map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name || "Untitled"}
+              </option>
+            ))}
+        </select>
         {incompatibleModes && (
           <span className="compare-warning">
             ⚠ These timelines use different axis modes — horizontal alignment may be off.
@@ -668,6 +750,12 @@ export function ComparePage() {
               transformOrigin: "0 0",
             }}
           >
+          {normalized && normalized.length === 0 && (
+            <div className="compare-empty">
+              <h2>Blank comparison</h2>
+              <p>Use the <strong>+ Add timeline…</strong> picker above to drop timelines onto this canvas.</p>
+            </div>
+          )}
           {normalized?.map((t, i) => {
             const pos = positions[t.id] ?? { x: 0, y: i * DEFAULT_PANEL_HEIGHT_GUESS };
             return (

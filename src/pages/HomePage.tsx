@@ -215,6 +215,13 @@ export function HomePage() {
           >
             ⇄ Compare{selected.size >= 2 ? ` (${selected.size})` : ""}
           </button>
+          <button
+            className="bar-btn"
+            onClick={() => navigate("/compare")}
+            title="Open an empty comparison and add timelines to it"
+          >
+            + New comparison
+          </button>
           <button className="primary" onClick={onNew} disabled={busy}>
             + New timeline
           </button>
