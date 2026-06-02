@@ -48,6 +48,10 @@ export function timelineSpan(timeline: Timeline): { min: number; max: number } {
 
   for (const row of timeline.rows) {
     for (const group of row.groups) {
+      // Skip groups with no blocks — they're invisible but would otherwise
+      // stretch the ruler. Groups are an internal grouping concept; only
+      // actual blocks should drive the visible span.
+      if (group.blocks.length === 0) continue;
       const s = toDay(group.start, timeline);
       const e = toDay(group.end, timeline);
       if (s < min) min = s;
